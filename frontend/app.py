@@ -102,21 +102,19 @@ display_chat()
 # Chat Input (Pinned at Bottom)
 # --------------------------
 if user_input := st.chat_input("Type your message here..."):
-    # Only process new input
     if user_input != st.session_state.last_input_sent:
         st.session_state.last_input_sent = user_input
 
         # Add user message
         st.session_state.chat_history.append(("user", user_input))
-        display_chat()  # Show user message immediately
+        display_chat()
 
-        # Determine if input is a URL for ingestion
         is_link = user_input.startswith("http://") or user_input.startswith("https://")
 
         with st.spinner("Thinking..."):
             try:
                 if is_link:
-                    # Send to ingestion endpoint
+                    # URL ingestion
                     res = requests.post(
                         f"{FASTAPI_URL}/chat_or_ingest",
                         data={"message": user_input},
@@ -133,27 +131,29 @@ if user_input := st.chat_input("Type your message here..."):
                     else:
                         answer = data.get("answer", "❌ No answer returned.")
                 else:
-                    # Normal chat query
-                    res = requests.get(
-                        f"{FASTAPI_URL}/chat",
-                        params={"q": user_input},
-                        timeout=30
+                    # Normal chat (THIS IS THE FIX)
+                    res = requests.post(
+                        f"{FASTAPI_URL}/chat_or_ingest",
+                        data={"message": user_input},
+                        timeout=60
                     )
                     res.raise_for_status()
                     data = res.json()
                     answer = data.get("answer", "❌ No answer returned.")
+
             except requests.exceptions.RequestException as e:
                 answer = f"❌ Cannot reach backend. ({e})"
             except ValueError:
                 answer = "❌ Invalid JSON response from backend."
 
-        # Add bot placeholder (empty message)
+        # Add answer
         st.session_state.chat_history.append(("assistant", ""))
-        bot_index = len(st.session_state.chat_history) - 1
 
-        # Typing animation in placeholder
+        bot_index = len(st.session_state.chat_history) - 1
         built = ""
         placeholder = st.empty()
+
+        # Typing animation
         for ch in answer:
             built += ch
             placeholder.markdown(
@@ -167,5 +167,4 @@ if user_input := st.chat_input("Type your message here..."):
                 unsafe_allow_html=True,
             )
 
-        # Replace placeholder with final answer in chat history
         st.session_state.chat_history[bot_index] = ("assistant", answer)
